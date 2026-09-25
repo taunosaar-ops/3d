@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pildist 3D-mudeliks (AI Generaator)</title>
-    <!-- Three.js 3D vaataja jaoks -->
+    <title>Pildist 3D-mudeliks (AI API)</title>
+    <!-- Three.js ja OBJ laadija -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -108,7 +109,7 @@
             align-items: center;
             justify-content: center;
         }
-        .placeholder-text { color: var(--text-muted); font-size: 0.9rem; }
+        .placeholder-text { color: var(--text-muted); font-size: 0.9rem; text-align: center; padding: 1rem; }
         
         .info-box {
             margin-top: 1.5rem;
@@ -124,10 +125,9 @@
 <body>
 
 <div class="container">
-    <h1>Pildist 3D-mudeliks (AI)</h1>
-    <p class="subtitle">Laadi üles pilt, sisesta oma Hugging Face API võti (valikuline) ja genereeri 3D-mudel.</p>
+    <h1>Pildist 3D-mudeliks (AI Generaator)</h1>
+    <p class="subtitle">Laadi üles pilt, sisesta oma Hugging Face API Token ja genereeri reaalne 3D-mudel.</p>
     
-    <!-- Faili üleslaadimine -->
     <div class="upload-section">
         <p style="margin-bottom: 1rem; color: var(--text-muted);" id="file-name-display">Vali pilt (JPG / PNG)</p>
         <label class="file-upload-btn">
@@ -136,10 +136,9 @@
         </label>
     </div>
 
-    <!-- Seaded -->
     <div class="controls">
         <div class="control-group">
-            <label for="api-token">Hugging Face API Token (valikuline):</label>
+            <label for="api-token">Hugging Face API Token:</label>
             <input type="text" id="api-token" placeholder="hf_...">
         </div>
         <div class="control-group">
@@ -148,15 +147,14 @@
         </div>
     </div>
 
-    <button class="action-btn" id="process-btn">Genereeri pildist 3D-mudel</button>
+    <button class="action-btn" id="process-btn">Saada AI-le ja genereeri 3D</button>
 
-    <!-- 3D Vaataja -->
     <div id="viewer-container">
         <span class="placeholder-text">3D eelvaade ilmub siia</span>
     </div>
 
     <div class="info-box">
-        <strong>Nõuanne:</strong> Tasuta API kasutamiseks saad luua tasuta konto Hugging Face lehel ja genereerida endale seadetest (*Access Tokens*) isikliku võtme, mis võimaldab AI-mudeleid otse veebist välja kutsuda.
+        <strong>Juhis:</strong> Tokeni saad tasuta luua oma Hugging Face konto seadete alt (*Access Tokens*). Kui tokenit pole sisestatud, kasutab leht testimiseks näidisobjekti.
     </div>
 </div>
 
@@ -186,10 +184,10 @@
         renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
         viewerContainer.appendChild(renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
         scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
         directionalLight.position.set(1, 1, 1).normalize();
         scene.add(directionalLight);
 
@@ -208,27 +206,70 @@
         }
 
         const apiToken = document.getElementById('api-token').value.trim();
-        
-        viewerContainer.innerHTML = '<span class="placeholder-text">Genereerin AI abil 3D-mudelit, palun oota...</span>';
+        viewerContainer.innerHTML = '<span class="placeholder-text">Saadand pildi AI-le ja ootan 3D-mudeli genereerimist (võib võtta kuni minut)...</span>';
 
-        // Simuleerime või teeme reaalse päringu
-        setTimeout(() => {
+        if (!apiToken) {
+            // Kui tokenit pole, näitame näidisobjekti
+            setTimeout(() => {
+                initViewer();
+                const geometry = new THREE.BoxGeometry(40, 60, 40);
+                const material = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.3 });
+                const mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+                alert('API token puudub! Kuvatakse testobjekt. Sisesta Hugging Face token reaalsete päringute tegemiseks.');
+            }, 1500);
+            return;
+        }
+
+        try {
+            // Näide Hugging Face Inference API kasutamisest pildist 3D-mudeliks mudelile
+            const response = await fetch("https://api-inference.huggingface.co/models/camenduru/InstantMesh", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${apiToken}`,
+                    "Content-Type": uploadedFile.type
+                },
+                body: uploadedFile
+            });
+
+            if (!response.ok) {
+                throw new Error('AI teenus on hetkel hõivatud või token on vigane.');
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+
             initViewer();
-            // Loome näidiks 3D objekti, kuni API võti on seadistatud
-            const geometry = new THREE.ConeGeometry(30, 80, 32);
-            const material = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.3 });
-            const mesh = new THREE.Mesh(geometry, material);
-            scene.add(mesh);
+            const loader = new THREE.OBJLoader();
+            loader.load(url, (object) => {
+                object.traverse((child) => {
+                    if (child.isMesh) {
+                        child.material = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.4 });
+                    }
+                });
+                scene.add(object);
+                alert('3D-mudel edukalt genereeritud!');
+            }, undefined, (error) => {
+                throw new Error('Laetud faili ei suudetud 3D-vormingusse parsida.');
+            });
 
-            alert('Pilt on edukalt töödeldud! (AI-mudeli täielikuks ühendamiseks lisa oma tasuta Hugging Face Token väljale).');
-        }, 2000);
+        } catch (error) {
+            viewerContainer.innerHTML = `<span class="placeholder-text" style="color: #ef4444;">Viga: ${error.message}<br>Kuvatakse varuobjekt.</span>`;
+            setTimeout(() => {
+                initViewer();
+                const geometry = new THREE.SphereGeometry(30, 32, 32);
+                const material = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3 });
+                const mesh = new THREE.Mesh(geometry, material);
+                scene.add(mesh);
+            }, 2000);
+        }
     });
 
     window.addEventListener('resize', () => {
         if (camera && renderer) {
             camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
             camera.updateProjectionMatrix();
-            renderer.setSize(viewerContainer.clientWidth, renderer.clientHeight);
+            renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
         }
     });
 </script>
